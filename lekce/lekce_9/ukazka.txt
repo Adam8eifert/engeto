@@ -1,0 +1,8 @@
+INFO 2023-07-26 10:30:22 Aplikace úspěšně spuštěna
+INFO 2023-07-26 10:31:12 Uživatel přihlášen
+WARN 2023-07-26 10:35:05 Nedostatek místa na disku
+INFO 2023-07-26 10:36:17 Data úspěšně uložena
+ERROR 2023-07-26 10:40:44 Připojení k databázi selhalo
+WARN 2023-07-26 10:45:30 Možná chyba v konfiguraci
+ERROR 2023-07-26 10:50:01 Nelze odeslat e-mail
+INFO 2023-07-26 10:55:12 Aplikace úspěšně ukončena
