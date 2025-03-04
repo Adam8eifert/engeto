@@ -19,7 +19,7 @@ pip install -r requirements.txt
 Program se spouští z příkazové řádky dvěma povinnými argumenty:
 
 ```
-python main.py <url_uzemniho_celku> <vystupni_soubor.csv>
+python scraper.py <url_uzemniho_celku> <vystupni_soubor.csv>
 ```
 
 ### Argumenty programu
