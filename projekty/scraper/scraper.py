@@ -3,6 +3,7 @@ projekt_3.py: třetí projekt do Engeto Online Python Akademie
 
 autor: Adam Seifert
 email: seifert.promotion@gmail.com
+upraveno pro zpracování detailní stránky obce
 """
 import sys
 import os
@@ -10,6 +11,7 @@ import csv
 import requests
 from bs4 import BeautifulSoup
 import time
+import re
 
 def zkontroluj_argumenty():
     """
@@ -20,14 +22,14 @@ def zkontroluj_argumenty():
     """
     if len(sys.argv) != 3:
         print("ERROR: Program vyžaduje přesně 2 argumenty!")
-        print("Použití: python main.py <url_adresa> <vystupni_soubor.csv>")
+        print("Použití: python scraper.py <url_adresa> <vystupni_soubor.csv>")
         sys.exit(1)
     
     url = sys.argv[1]
     vystupni_soubor = sys.argv[2]
     
-    # Kontrola, zda URL začíná správně
-    if not url.startswith("https://volby.cz/pls/ps2017nss/"):
+    # Kontrola, zda URL začíná správně - nyní akceptuje i www variantu
+    if not (url.startswith("https://volby.cz/pls/ps2017nss/") or url.startswith("https://www.volby.cz/pls/ps2017nss/")):
         print("ERROR: URL adresa musí být z webu volby.cz!")
         sys.exit(1)
         
@@ -37,6 +39,59 @@ def zkontroluj_argumenty():
         sys.exit(1)
         
     return url, vystupni_soubor
+
+def je_detailni_stranka(url):
+    """
+    Zjistí, zda je zadaná URL adresa detailní stránkou obce.
+    
+    Args:
+        url (str): URL adresa stránky
+        
+    Returns:
+        bool: True pokud jde o detailní stránku obce, False pokud jde o přehledovou stránku
+    """
+    return '&xobec=' in url
+
+def ziskej_kod_a_nazev_obce_z_url(url):
+    """
+    Získá kód a název obce z detailní URL adresy.
+    
+    Args:
+        url (str): URL adresa detailní stránky obce
+        
+    Returns:
+        tuple: (kod_obce, nazev_obce, url)
+    """
+    try:
+        # Získáme kód obce z URL
+        kod_obce_match = re.search(r'xobec=(\d+)', url)
+        if kod_obce_match:
+            kod_obce = kod_obce_match.group(1)
+        else:
+            kod_obce = "NEZNAMY"
+        
+        # Stáhneme stránku a získáme název obce z titulku
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Zkusíme najít název obce v nadpisu
+        h3_tag = soup.find('h3')
+        if h3_tag:
+            nazev_obce = h3_tag.text.strip().split(':')[-1].strip()
+        else:
+            # Zkusíme alternativní způsob
+            title_tag = soup.find('title')
+            if title_tag:
+                nazev_obce = title_tag.text.strip().split('-')[-1].strip()
+            else:
+                nazev_obce = "Neznámá obec"
+        
+        return kod_obce, nazev_obce, url
+        
+    except Exception as e:
+        print(f"ERROR: Nepodařilo se získat informace o obci z URL: {e}")
+        sys.exit(1)
 
 def ziskej_odkazy_obci(url):
     """
@@ -48,6 +103,18 @@ def ziskej_odkazy_obci(url):
     Returns:
         dict: slovník s kódy obcí jako klíči a názvy obcí a odkazy jako hodnotami
     """
+    # Pokud jde o detailní stránku obce, vrátíme informace pro tuto obec
+    if je_detailni_stranka(url):
+        kod_obce, nazev_obce, odkaz_url = ziskej_kod_a_nazev_obce_z_url(url)
+        obce = {
+            kod_obce: {
+                'nazev': nazev_obce,
+                'url': odkaz_url
+            }
+        }
+        return obce
+    
+    # Jinak pokračujeme standardně s přehledovou stránkou
     try:
         print(f"Stahuji data z: {url}")
         response = requests.get(url)
@@ -102,6 +169,7 @@ def ziskej_data_obce(kod_obce, obec_info):
         dict: Slovník s volebními daty pro danou obec
     """
     url = obec_info['url']
+    print(f"Stahuji data pro obec {obec_info['nazev']} z: {url}")
     
     try:
         response = requests.get(url)
@@ -115,46 +183,38 @@ def ziskej_data_obce(kod_obce, obec_info):
     # Získáme základní údaje o volbách v obci
     zakladni_udaje = {}
     
-    try:
-        # Hledáme volební účast - registrované voliče, vydané obálky a platné hlasy
-        tables = soup.find_all('table')
-        
-        for table in tables:
-            headers = [header.text.strip() for header in table.find_all('th')]
-            
-            if 'Voliči v seznamu' in headers:
-                rows = table.find_all('tr')
-                for row in rows:
-                    cells = row.find_all('td')
-                    if len(cells) >= 3:
-                        zakladni_udaje['registrovani'] = cells[3].text.strip().replace('\xa0', '')
-                        zakladni_udaje['vydane_obalky'] = cells[4].text.strip().replace('\xa0', '')
-                        zakladni_udaje['platne_hlasy'] = cells[7].text.strip().replace('\xa0', '')
-                        break
-        
-        # Hledáme výsledky jednotlivých stran
-        strany = {}
-        
-        # Prohledáváme všechny tabulky se stranami
-        for table in tables:
+    # Najdeme tabulku s volebními údaji - hledáme podle textu "Voliči v seznamu"
+    for table in soup.find_all('table'):
+        if "Voliči v seznamu" in table.text:
             rows = table.find_all('tr')
             for row in rows:
+                headers = row.find_all('th')
                 cells = row.find_all('td')
-                # Pokud řádek obsahuje jméno strany a počet hlasů
-                if len(cells) >= 2:
-                    # Hledáme řádky, které obsahují název strany a počet hlasů
-                    nazev_bunka = row.find('td', {'class': 'overflow_name'})
-                    hlasy_bunka = row.find('td', {'class': 'text-right'})
+                
+                if len(cells) >= 3 and any("Voliči v seznamu" in h.text for h in headers):
+                    zakladni_udaje['registrovani'] = cells[0].text.strip().replace('\xa0', '')
+                    zakladni_udaje['vydane_obalky'] = cells[1].text.strip().replace('\xa0', '')
+                    zakladni_udaje['platne_hlasy'] = cells[2].text.strip().replace('\xa0', '')
+                    break
+    
+    # Najdeme údaje o stranách
+    strany = {}
+    for table in soup.find_all('table'):
+        # Hledáme tabulky s výsledky stran - ty mají charakteristický formát
+        rows = table.find_all('tr')
+        for row in rows:
+            cells = row.find_all('td')
+            # Hledáme řádky, kde první buňka obsahuje číslo (číslo strany)
+            if len(cells) >= 3 and cells[0].text.strip() and cells[0].text.strip().isdigit():
+                try:
+                    cislo_strany = cells[0].text.strip()
+                    nazev_strany = cells[1].text.strip()
+                    hlasy = cells[2].text.strip().replace('\xa0', '')
                     
-                    if nazev_bunka and hlasy_bunka:
-                        nazev_strany = nazev_bunka.text.strip()
-                        hlasy = hlasy_bunka.text.strip().replace('\xa0', '')
-                        
-                        if nazev_strany and hlasy:
-                            strany[nazev_strany] = hlasy
-    except Exception as e:
-        print(f"ERROR: Nepodařilo se zpracovat data pro obec {obec_info['nazev']}: {e}")
-        return None
+                    if nazev_strany and hlasy:
+                        strany[nazev_strany] = hlasy
+                except Exception as e:
+                    print(f"Chyba při zpracování strany: {e}")
     
     # Sestavíme kompletní výsledek
     vysledek = {
@@ -165,6 +225,12 @@ def ziskej_data_obce(kod_obce, obec_info):
         'platne_hlasy': zakladni_udaje.get('platne_hlasy', ''),
         'strany': strany
     }
+    
+    # Debug: vypíšeme základní výsledky
+    print(f"Registrovaní voliči: {vysledek['registrovani']}")
+    print(f"Vydané obálky: {vysledek['vydane_obalky']}")
+    print(f"Platné hlasy: {vysledek['platne_hlasy']}")
+    print(f"Počet stran: {len(strany)}")
     
     return vysledek
 
@@ -193,8 +259,8 @@ def uloz_do_csv(obce_data, vystupni_soubor):
     header = ['kod', 'nazev', 'registrovani', 'vydane_obalky', 'platne_hlasy'] + vsechny_strany
     
     try:
-        with open(vystupni_soubor, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
+        with open(vystupni_soubor, 'w', newline='', encoding='utf-8-sig') as f:  # Změna encoding na utf-8-sig
+            writer = csv.writer(f, delimiter=';')  # Změna oddělovače na středník pro Excel
             writer.writerow(header)
             
             for obec in obce_data:
@@ -237,7 +303,7 @@ def main():
     
     for kod_obce, obec_info in obce.items():
         counter += 1
-        print(f"Stahuji data pro obec {counter}/{len(obce)}: {obec_info['nazev']} ({kod_obce})")
+        print(f"Zpracovávám obec {counter}/{len(obce)}: {obec_info['nazev']} ({kod_obce})")
         
         obec_data = ziskej_data_obce(kod_obce, obec_info)
         if obec_data:
