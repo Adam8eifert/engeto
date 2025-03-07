@@ -234,56 +234,58 @@ def ziskej_data_obce(kod_obce, obec_info):
     
     return vysledek
 
+
 def uloz_do_csv(obce_data, vystupni_soubor):
     """
-    Uloží získaná data do CSV souboru.
-    
+    Uloží získaná data do CSV souboru optimalizovaného pro Excel a odpovídající požadovanému formátu.
+
     Args:
-        obce_data (list): Seznam slovníků s daty obcí
-        vystupni_soubor (str): Název výstupního CSV souboru
+        obce_data (list): Seznam slovníků s daty obcí.
+        vystupni_soubor (str): Název výstupního CSV souboru.
     """
     if not obce_data:
         print("ERROR: Žádná data k uložení!")
         return False
-    
-    # Získáme seznam všech stran (pro hlavičku CSV)
-    vsechny_strany = set()
-    for obec in obce_data:
-        for strana in obec.get('strany', {}).keys():
-            vsechny_strany.add(strana)
-    
-    # Seřadíme strany abecedně
-    vsechny_strany = sorted(list(vsechny_strany))
-    
-    # Připravíme hlavičku
-    header = ['kod', 'nazev', 'registrovani', 'vydane_obalky', 'platne_hlasy'] + vsechny_strany
-    
+
     try:
-        with open(vystupni_soubor, 'w', newline='', encoding='utf-8-sig') as f:  # Změna encoding na utf-8-sig
-            writer = csv.writer(f, delimiter=';')  # Změna oddělovače na středník pro Excel
+        # Seznam všech politických stran (pro hlavičku CSV)
+        vsechny_strany = set()
+        for obec in obce_data:
+            vsechny_strany.update(obec.get('strany', {}).keys())
+        vsechny_strany = sorted(vsechny_strany)
+
+        # Připravíme hlavičku v češtině
+        header = ['Kód obce', 'Název obce', 'Registrovaní voliči', 'Vydané obálky', 'Platné hlasy']
+        header.extend(vsechny_strany)
+
+        # Otevřeme soubor s kódováním utf-8-sig (Excel-friendly)
+        with open(vystupni_soubor, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             writer.writerow(header)
-            
+
             for obec in obce_data:
                 row = [
                     obec['kod'],
                     obec['nazev'],
-                    obec['registrovani'],
-                    obec['vydane_obalky'],
-                    obec['platne_hlasy']
+                    obec['registrovani'].replace('\xa0', '').replace(' ', ''),  # Odstraníme mezery v číslech
+                    obec['vydane_obalky'].replace('\xa0', '').replace(' ', ''),
+                    obec['platne_hlasy'].replace('\xa0', '').replace(' ', '')
                 ]
                 
-                # Přidáme hlasy pro jednotlivé strany
+                # Přidáme hlasy pro jednotlivé strany, pokud nejsou, dáme 0
                 for strana in vsechny_strany:
-                    row.append(obec.get('strany', {}).get(strana, '0'))
+                    row.append(obec.get('strany', {}).get(strana, '0').replace('\xa0', '').replace(' ', ''))
                 
                 writer.writerow(row)
-        
+
         print(f"Data byla úspěšně uložena do souboru: {vystupni_soubor}")
         return True
-    
+
     except Exception as e:
         print(f"ERROR: Nepodařilo se uložit data do souboru {vystupni_soubor}: {e}")
         return False
+
+
 
 def main():
     """
