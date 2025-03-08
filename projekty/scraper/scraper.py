@@ -255,7 +255,7 @@ def uloz_do_csv(obce_data, vystupni_soubor):
         vsechny_strany = sorted(vsechny_strany)
 
         # Připravíme hlavičku v češtině
-        header = ['Kód obce', 'Název obce', 'Registrovaní voliči', 'Vydané obálky', 'Platné hlasy']
+        header = ['Kód obce', 'Název obce', 'Voliči v seznamu', 'Vydané obálky', 'Platné hlasy']
         header.extend(vsechny_strany)
 
         # Otevřeme soubor s kódováním utf-8-sig (Excel-friendly)
@@ -284,7 +284,6 @@ def uloz_do_csv(obce_data, vystupni_soubor):
     except Exception as e:
         print(f"ERROR: Nepodařilo se uložit data do souboru {vystupni_soubor}: {e}")
         return False
-
 
 
 def main():
@@ -316,8 +315,6 @@ def main():
     
     # Uložíme data do CSV
     uloz_do_csv(obce_data, vystupni_soubor)
-    
-    print("Program byl úspěšně dokončen.")
 
 if __name__ == "__main__":
     main()
