@@ -6,7 +6,6 @@ email: seifert.promotion@gmail.com
 upraveno pro zpracování detailní stránky obce
 """
 import sys
-import os
 import csv
 import requests
 from bs4 import BeautifulSoup
