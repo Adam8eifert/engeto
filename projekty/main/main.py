@@ -70,47 +70,48 @@ def najdi_obce(soup):
     print(f"Celkem nalezeno obcí: {len(obce)}")
     return obce
 
-def zpracuj_obec(obec_info):
-    """Získává detailní data pro jednotlivou obec"""
-    print(f"\nZpracovávám obec: {obec_info['nazev']}")
+def ziskej_data_obce(kod_obce, obec_info):
+    url = obec_info['url']
+    print(f"Stahuji data pro obec {obec_info['nazev']} z: {url}")
+
     try:
-        response = requests.get(obec_info['url'])
+        response = requests.get(url)
         soup = BeautifulSoup(response.text, 'html.parser')
     except Exception as e:
-        print(f"Chyba při načítání obce: {e}")
+        print(f"Chyba: {e}")
         return None
 
     # Získání základních údajů
-    data = {
-        'registrovani': '0',
-        'vydane_obalky': '0', 
-        'platne_hlasy': '0',
-        'strany': {}
-    }
-
-    # Hledání tabulky s voliči
+    zakladni_udaje = {'registrovani': '0', 'vydane_obalky': '0', 'platne_hlasy': '0'}
+    
     for table in soup.find_all('table'):
         if "Voliči v seznamu" in table.text:
-            for row in table.find_all('tr'):
+            rows = table.find_all('tr')
+            for row in rows:
                 cells = row.find_all('td')
-                if len(cells) >= 3:
-                    data['registrovani'] = cells[0].text.replace('\xa0', '')
-                    data['vydane_obalky'] = cells[1].text.replace('\xa0', '')
-                    data['platne_hlasy'] = cells[2].text.replace('\xa0', '')
+                if len(cells) >= 8:
+                    zakladni_udaje['registrovani'] = cells[3].text.strip().replace('\xa0', '')  # 4. buňka
+                    zakladni_udaje['vydane_obalky'] = cells[4].text.strip().replace('\xa0', '')  # 5. buňka
+                    zakladni_udaje['platne_hlasy'] = cells[7].text.strip().replace('\xa0', '')   # 8. buňka
                     break
 
-    # Hledání výsledků stran
+    # Získání výsledků stran
+    strany = {}
     for table in soup.find_all('table'):
         for row in table.find_all('tr'):
             cells = row.find_all('td')
-            if len(cells) >= 3 and cells[0].text.strip().isdigit():
+            if len(cells) >= 4 and cells[0].text.strip().isdigit():
                 nazev_strany = cells[1].text.strip()
-                hlasy = cells[2].text.replace('\xa0', '').strip()
+                hlasy = cells[3].text.strip().replace('\xa0', '')  # 4. buňka pro absolutní počty
                 if nazev_strany and hlasy:
-                    data['strany'][nazev_strany] = hlasy
+                    strany[nazev_strany] = hlasy
 
-    print(f"Data pro {obec_info['nazev']} úspěšně získána")
-    return data
+    return {
+        'kod': kod_obce,
+        'nazev': obec_info['nazev'],
+        **zakladni_udaje,
+        'strany': strany
+    }
 
 def uloz_data(obce_data, soubor):
     """Ukládá data do CSV formátu"""
@@ -162,7 +163,7 @@ def main():
     
     for i, (kod, info) in enumerate(obce.items(), 1):
         print(f"\n[{i}/{celkem}]", end=' ')
-        data = zpracuj_obec(info)
+        data = ziskej_data_obce(info)
         if data:
             results[kod] = {
                 'nazev': info['nazev'],
