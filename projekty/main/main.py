@@ -3,36 +3,49 @@ import csv
 import requests
 from bs4 import BeautifulSoup
 import time
-import re
 import os
 
 def zkontroluj_argumenty():
-    """Kontrola vstupních argumentů"""
+    """
+    Kontroluje a validuje vstupní argumenty programu.
+    
+    Returns:
+        tuple: (url, vystup) - URL adresa a název výstupního souboru
+        
+    Raises:
+        SystemExit: Pokud argumenty nejsou validní
+    """
     if len(sys.argv) != 3:
-        print("Chyba: Program vyžaduje 2 argumenty - URL a výstupní soubor!")
-        print("Použití: python main.py <url> <výstup.csv>")
+        print("Použití: python main.py \"url\" název_souboru.csv")
         sys.exit(1)
-
+    
     url = sys.argv[1]
     vystup = sys.argv[2]
-
-    if not any(url.startswith(base) for base in (
-        "https://volby.cz/pls/ps2017nss/",
-        "https://www.volby.cz/pls/ps2017nss/"
-    )):
-        print("Chyba: Neplatná URL adresa. Musí být z volby.cz!")
+    
+    if not url.startswith(("https://volby.cz/pls/ps2017nss/", "https://www.volby.cz/pls/ps2017nss/")):
+        print("Chyba: Neplatná URL, musí být z volby.cz")
         sys.exit(1)
-
+    
     if not vystup.endswith('.csv'):
-        print("Chyba: Výstupní soubor musí mít příponu .csv!")
+        print("Chyba: Výstupní soubor musí mít příponu .csv")
         sys.exit(1)
-
+    
     return url, vystup
 
-def nacti_stranky(url):
-    """Načte obsah stránky s kontrolou chyb"""
+def nacti_stranku(url):
+    """
+    Načte obsah webové stránky a vrátí parsovaný HTML objekt.
+    
+    Args:
+        url (str): URL adresa stránky k načtení
+        
+    Returns:
+        BeautifulSoup: Parsovaný HTML obsah
+        
+    Raises:
+        SystemExit: Pokud se nepodaří stránku načíst
+    """
     try:
-        print(f"Stahuji hlavní stránku: {url}")
         response = requests.get(url)
         response.raise_for_status()
         return BeautifulSoup(response.text, 'html.parser')
@@ -40,139 +53,140 @@ def nacti_stranky(url):
         print(f"Chyba při načítání stránky: {e}")
         sys.exit(1)
 
-def najdi_obce(soup):
-    """Hledá seznam obcí v HTML struktuře"""
-    print("Hledám data obcí...")
+def ziskej_obce(soup):
+    """
+    Získává seznam obcí z hlavní stránky.
+    
+    Args:
+        soup (BeautifulSoup): Parsovaný HTML obsah hlavní stránky
+        
+    Returns:
+        dict: Slovník obcí ve formátu {kód: {'nazev': název, 'url': odkaz}}
+    """
     obce = {}
+    tables = soup.find_all('table')
     
-    for table in soup.find_all('table'):
-        for row in table.find_all('tr'):
+    for table in tables:
+        for row in table.find_all('tr')[2:]:  # Přeskočit hlavičku
             cells = row.find_all('td')
-            if len(cells) < 3:
-                continue
-
-            # Zpracování buněk s obcemi
-            if cells[0].find('a') and cells[1].text.strip():
-                kod = cells[0].text.strip()
-                nazev = cells[1].text.strip()
-                link = cells[0].find('a')['href']
+            if len(cells) >= 3:
+                kod = cells[0].get_text(strip=True)
+                nazev = cells[1].get_text(strip=True)
+                odkaz = cells[0].find('a')['href'] if cells[0].find('a') else None
                 
-                obce[kod] = {
-                    'nazev': nazev,
-                    'url': f"https://volby.cz/pls/ps2017nss/{link}"
-                }
-                print(f"Nalezena obec: {nazev} ({kod})")
-
-    if not obce:
-        print("Varování: Nebyly nalezeny žádné obce!")
-        return None
-    
-    print(f"Celkem nalezeno obcí: {len(obce)}")
+                if kod and nazev and odkaz:
+                    obce[kod] = {
+                        'nazev': nazev,
+                        'url': f"https://volby.cz/pls/ps2017nss/{odkaz}"
+                    }
     return obce
 
-def ziskej_data_obce(kod_obce, obec_info):
-    url = obec_info['url']
-    print(f"Stahuji data pro obec {obec_info['nazev']} z: {url}")
-
+def zpracuj_obec(obec_url):
+    """
+    Zpracuje detailní data pro jednu obec.
+    
+    Args:
+        obec_url (str): URL adresa detailní stránky obce
+        
+    Returns:
+        dict: Slovník s daty obce ve formátu:
+              {'volici': počet, 'obalky': počet, 'platne': počet, 'strany': {strana: hlasy}}
+    """
     try:
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = nacti_stranku(obec_url)
+        data = {
+            'volici': None,
+            'obalky': None,
+            'platne': None,
+            'strany': {}
+        }
+
+        # Získání základních údajů
+        base_table = soup.find('table', {'class': 'table'})
+        if base_table:
+            rows = base_table.find_all('tr')
+            data['volici'] = rows[2].find_all('td')[3].get_text().replace('\xa0', '')
+            data['obalky'] = rows[2].find_all('td')[4].get_text().replace('\xa0', '')
+            data['platne'] = rows[2].find_all('td')[7].get_text().replace('\xa0', '')
+
+        # Získání výsledků stran - projdeme všechny tabulky s výsledky
+        results_tables = soup.find_all('table', {'class': 'table'})
+        for table in results_tables:
+            for row in table.find_all('tr')[2:]:  # Přeskočit hlavičku
+                cells = row.find_all('td')
+                if len(cells) >= 4:  # Zkontrolujeme, zda má řádek dostatek buněk
+                    strana = cells[1].get_text(strip=True)
+                    hlasy = cells[2].get_text(strip=True).replace('\xa0', '')
+                    if strana and hlasy.isdigit():
+                        data['strany'][strana] = hlasy
+        
+        return data
     except Exception as e:
-        print(f"Chyba: {e}")
+        print(f"Chyba u obce: {e}")
         return None
 
-    # Získání základních údajů
-    zakladni_udaje = {'registrovani': '0', 'vydane_obalky': '0', 'platne_hlasy': '0'}
+def uloz_csv(data, filename):
+    """
+    Ukládá data do CSV souboru.
     
-    for table in soup.find_all('table'):
-        if "Voliči v seznamu" in table.text:
-            rows = table.find_all('tr')
-            for row in rows:
-                cells = row.find_all('td')
-                if len(cells) >= 8:
-                    zakladni_udaje['registrovani'] = cells[3].text.strip().replace('\xa0', '')  # 4. buňka
-                    zakladni_udaje['vydane_obalky'] = cells[4].text.strip().replace('\xa0', '')  # 5. buňka
-                    zakladni_udaje['platne_hlasy'] = cells[7].text.strip().replace('\xa0', '')   # 8. buňka
-                    break
-
-    # Získání výsledků stran
-    strany = {}
-    for table in soup.find_all('table'):
-        for row in table.find_all('tr'):
-            cells = row.find_all('td')
-            if len(cells) >= 4 and cells[0].text.strip().isdigit():
-                nazev_strany = cells[1].text.strip()
-                hlasy = cells[3].text.strip().replace('\xa0', '')  # 4. buňka pro absolutní počty
-                if nazev_strany and hlasy:
-                    strany[nazev_strany] = hlasy
-
-    return {
-        'kod': kod_obce,
-        'nazev': obec_info['nazev'],
-        **zakladni_udaje,
-        'strany': strany
-    }
-
-def uloz_data(obce_data, soubor):
-    """Ukládá data do CSV formátu"""
-    if not obce_data:
-        print("Chyba: Žádná data k uložení!")
-        return False
-
+    Args:
+        data (dict): Data obcí k uložení
+        filename (str): Název výstupního souboru
+        
+    Raises:
+        SystemExit: Pokud se nepodaří soubor uložit
+    """
     try:
-        # Příprava hlavičky
-        vsechny_strany = set()
-        for data in obce_data.values():
-            vsechny_strany.update(data['strany'].keys())
-        vsechny_strany = sorted(vsechny_strany)
-
-        with open(soubor, 'w', newline='', encoding='utf-8-sig') as f:
+        with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f, delimiter=';')
-            header = ['Kód', 'Obec', 'Voliči', 'Obálky', 'Platné hlasy'] + vsechny_strany
+            
+            # Příprava hlavičky
+            strany = sorted({strana for obec in data.values() for strana in obec['strany']})
+            header = ['Kód obce', 'Název obce', 'Voliči', 'Obálky', 'Platné hlasy'] + strany
             writer.writerow(header)
-
-            for kod, data in obce_data.items():
-                radek = [
+            
+            # Zápis dat
+            for kod, info in data.items():
+                row = [
                     kod,
-                    data['nazev'],
-                    data['registrovani'],
-                    data['vydane_obalky'],
-                    data['platne_hlasy']
+                    info['nazev'],
+                    info['volici'],
+                    info['obalky'],
+                    info['platne']
                 ]
-                radek += [data['strany'].get(strana, '0') for strana in vsechny_strany]
-                writer.writerow(radek)
-
-        print(f"\nData úspěšně uložena do: {os.path.abspath(soubor)}")
-        return True
-
+                row += [info['strany'].get(strana, '0') for strana in strany]
+                writer.writerow(row)
+        
+        print(f"Data uložena do: {os.path.abspath(filename)}")
     except Exception as e:
         print(f"Chyba při ukládání: {e}")
-        return False
-
-def main():
-    url, vystup = zkontroluj_argumenty()
-    soup = nacti_stranky(url)
-    
-    obce = najdi_obce(soup)
-    if not obce:
-        print("Konec programu - žádná data")
         sys.exit(1)
 
-    results = {}
-    celkem = len(obce)
+def main():
+    """
+    Hlavní funkce programu. Řídí celý proces scrapování a ukládání dat.
+    """
+    url, vystup = zkontroluj_argumenty()
+    print(f"Start scrapování: {url}")
     
+    # Získání seznamu obcí
+    soup = nacti_stranku(url)
+    obce = ziskej_obce(soup)
+    print(f"Nalezeno obcí: {len(obce)}")
+    
+    # Zpracování jednotlivých obcí
+    results = {}
     for i, (kod, info) in enumerate(obce.items(), 1):
-        print(f"\n[{i}/{celkem}]", end=' ')
-        data = ziskej_data_obce(info)
+        print(f"Zpracovávám ({i}/{len(obce)}) {info['nazev']}")
+        data = zpracuj_obec(info['url'])
         if data:
             results[kod] = {
                 'nazev': info['nazev'],
                 **data
             }
-        time.sleep(0.2)
-
-    if not uloz_data(results, vystup):
-        sys.exit(1)
+        time.sleep(0.5)  # Respektujme robots.txt
+    
+    uloz_csv(results, vystup)
 
 if __name__ == "__main__":
     main()
