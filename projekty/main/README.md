@@ -19,7 +19,7 @@ pip install -r requirements.txt
 Program se spouští z příkazové řádky dvěma povinnými argumenty:
 
 ```
-python scraper.py <url_uzemniho_celku> <vystupni_soubor.csv>
+python main.py "url_uzemniho_celku" <vystupni_soubor.csv>
 ```
 
 ### Argumenty programu
@@ -30,7 +30,7 @@ python scraper.py <url_uzemniho_celku> <vystupni_soubor.csv>
 ### Příklad spuštění
 
 ```
-python main.py "https://volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=2&xnumnuts=2101" vysledky_benesov.csv
+python main.py "https://volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=2&xnumnuts=2101" vysledky.csv
 ```
 
 ## Ukázka výstupu
@@ -38,22 +38,23 @@ python main.py "https://volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=2&xnumnuts=2
 Po spuštění programu s výše uvedenými argumenty bude výstup v konzoli vypadat přibližně takto:
 
 ```
-Stahuji data z: https://volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=2&xnumnuts=2101
-Nalezeno 114 obcí.
-Stahuji data pro obec 1/114: Benešov (529303)
-Stahuji data pro obec 2/114: Bernartice (532568)
+Start scrapování: https://volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=2&xnumnuts=2101
+Nalezeno obcí: 114
+Zpracovávám (1/114) Benešov
+Zpracovávám (2/114) Bernartice
+
 ...
-Stahuji data pro obec 114/114: Zvěstov (530883)
-Data byla úspěšně uložena do souboru: vysledky_benesov.csv
-Program byl úspěšně dokončen.
+Zpracovávám (113/114) Zdislavice
+Zpracovávám (114/114) Zvěstov
+Data uložena do: C:\Users\seife\Documents\engeto\projekty\main\vysledky.csv
 ```
 
 Výstupní CSV soubor bude obsahovat následující sloupce:
-- `kod` - kód obce
-- `nazev` - název obce
-- `registrovani` - počet registrovaných voličů
-- `vydane_obalky` - počet vydaných obálek
-- `platne_hlasy` - počet platných hlasů
+- kód obce
+- název obce
+- počet registrovaných voličů
+- počet vydaných obálek
+- počet platných hlasů
 - sloupce pro jednotlivé kandidující strany s počty hlasů
 
 
