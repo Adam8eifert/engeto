@@ -124,7 +124,7 @@ def zpracuj_obec(obec_url):
     except Exception as e:
         print(f"Chyba u obce: {e}")
         return None
-
+    
 def uloz_csv(data, filename):
     """
     Ukládá data do CSV souboru.
