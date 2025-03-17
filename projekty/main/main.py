@@ -1,3 +1,10 @@
+"""
+main.py: třetí projekt do Engeto Online Python Akademie
+
+author: Adam Seifert
+email: seifert.promotion@gmail.com
+"""
+
 import sys
 import csv
 import requests
